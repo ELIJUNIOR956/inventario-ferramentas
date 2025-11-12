@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventário - Ferramental de Usinagem</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- SheetJS (XLSX) para leitura de .xlsx/.csv -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <aside class="menu-lateral">
+    <div class="logo">🔩 Inventário - Usinagem</div>
+
+    <div class="menu-actions">
+      <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
+      <div class="btn-row">
+        <button id="btnImport">📂 Importar Planilha</button>
+        <button id="btnClear" title="Remove dados salvos">♻️ Limpar Dados</button>
+      </div>
+    </div>
+
+    <nav id="locaisList" class="locais-list">
+      <!-- Locais (abas) serão injetados aqui -->
+    </nav>
+
+    <div class="versao">© 2025</div>
+  </aside>
+
+  <div class="conteudo">
+    <header>
+      <h1 id="titleHeader">Inventário — Selecione um local</h1>
+      <div class="controles">
+        <input id="searchInput" placeholder="🔍 Buscar item ou descrição..." />
+        <button id="btnShowAll">📚 Mostrar Todos</button>
+      </div>
+    </header>
+
+    <main id="mainList" class="main-list">
+      <!-- Cards/listas de itens serão renderizados aqui -->
+    </main>
+
+    <footer>
+      <p>Inventário de Usinagem — Dados carregados do arquivo (.xlsx) e salvos localmente</p>
+    </footer>
+  </div>
+
+  <!-- Modal/Drawer de detalhes do item -->
+  <div id="modalDetalhes" class="modal" aria-hidden="true">
+    <div class="modal-conteudo">
+      <button class="close-modal" id="closeModal" aria-label="Fechar">✖</button>
+      <h2 id="modalTitulo">Detalhes do Item</h2>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="script.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+:root{
+  --bg: #2f2f2f;
+  --panel: #3a3a3a;
+  --card: #424242;
+  --muted: #c7c7c7;
+  --accent: #3b82f6;
+  --glass: rgba(255,255,255,0.03);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  background:var(--bg);
+  color: #f3f4f6;
+  display:flex;
+  min-height:100vh;
+}
+
+/* Sidebar */
+.menu-lateral{
+  width:260px;
+  background:linear-gradient(180deg,var(--panel),#343434);
+  height:100vh;
+  padding:18px;
+  position:fixed;
+  left:0;
+  top:0;
+  box-shadow: 4px 0 18px rgba(0,0,0,0.6);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.menu-lateral .logo{
+  font-weight:700;
+  font-size:1.15rem;
+  color:var(--accent);
+}
+.menu-actions{
+  display:flex;
+  gap:8px;
+  flex-direction:column;
+}
+#fileInput{padding:6px;border-radius:8px;border:none;background:#2a2a2a;color:#fff}
+.btn-row{display:flex;gap:8px;margin-top:6px}
+#btnImport, #btnClear{
+  padding:8px 10px;
+  border-radius:8px;
+  border:none;
+  cursor:pointer;
+  background:var(--accent);
+  color:#fff;
+  transition:background .18s;
+}
+#btnClear{background:#ef4444}
+#btnImport:hover{background:#60a5fa}
+#btnClear:hover{background:#fb7185}
+
+.locais-list{
+  margin-top:6px;
+  overflow:auto;
+  padding-right:6px;
+}
+.local-btn{
+  display:block;
+  width:100%;
+  text-align:left;
+  padding:10px;
+  border-radius:8px;
+  background:transparent;
+  color:var(--muted);
+  border:none;
+  cursor:pointer;
+  margin-bottom:6px;
+  transition:background .12s,color .12s, transform .08s;
+}
+.local-btn:hover{background:rgba(255,255,255,0.03); color:#fff; transform:translateX(4px)}
+.local-btn.active{background:var(--accent); color:#081127}
+
+/* Content */
+.conteudo{
+  margin-left:300px;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  min-height:100vh;
+}
+header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:18px;
+  background:var(--panel);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+}
+header h1{margin:0;font-size:1.05rem}
+.controles{display:flex;gap:10px;align-items:center}
+#searchInput{padding:8px 12px;border-radius:8px;border:none;background:#242424;color:#fff;min-width:260px}
+#btnShowAll{padding:8px 10px;border-radius:8px;border:none;background:transparent;color:var(--muted);cursor:pointer}
+
+.main-list{
+  padding:20px;
+  display:grid;
+  grid-template-columns: repeat(auto-fill,minmax(340px,1fr));
+  gap:14px;
+}
+
+/* Card por categoria (sheet) */
+.card{
+  background:linear-gradient(180deg,var(--card), #3b3b3b);
+  padding:14px;
+  border-radius:12px;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.45);
+}
+.card h3{margin:0 0 8px 0; display:flex; justify-content:space-between; align-items:center;}
+.card .lista{list-style:none;padding:0;margin:0}
+.item{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px;
+  border-radius:8px;
+  margin-bottom:8px;
+  background:var(--glass);
+  transition: transform .12s, box-shadow .12s;
+  cursor:pointer;
+}
+.item:hover{transform:translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.45)}
+.item .meta{font-size:0.9rem;color:var(--muted)}
+.item .nome{font-weight:600;color:#e6f0ff}
+
+/* Footer */
+footer{padding:12px 20px;color:var(--muted); margin-top:auto; background:var(--panel)}
+
+/* Modal detalhes */
+.modal{
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background: rgba(0,0,0,0.6); z-index:1000;
+}
+.modal-conteudo{
+  width:520px; max-width:94%; background:linear-gradient(180deg,#3a3a3a,#2f2f2f);
+  padding:18px; border-radius:12px; color:#fff; position:relative;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+}
+.close-modal{
+  position:absolute; right:12px; top:12px; background:transparent; border:none; color:#fff; font-size:1.05rem; cursor:pointer;
+}
+.modal-body{margin-top:8px; display:flex; flex-direction:column; gap:8px}
+.det-row{display:flex; justify-content:space-between; gap:12px; padding:8px; border-radius:8px; background:rgba(255,255,255,0.02)}
+.det-row .k{font-weight:600; color:var(--muted)}
+.det-row .v{max-width:66%; text-align:right; word-break:break-word}
+
+/* Responsivo */
+@media (max-width:900px){
+  .menu-lateral{position:relative;width:100%;height:auto;flex-direction:row;gap:12px;padding:12px}
+  .conteudo{margin-left:0}
+  .locais-list{display:flex;gap:8px;overflow:auto}
+  .local-btn{white-space:nowrap;padding:8px 10px}
+  .main-list{grid-template-columns:1fr}
+}
