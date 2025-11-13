@@ -329,23 +329,25 @@ footer{padding:12px 20px;color:var(--muted); margin-top:auto; background:var(--p
   }
   .menu-lateral .logo{display:none}
   
-  /* FIX: Menu de Locais (Abas) Horizontal no Tablet */
+  /* Menu de Locais (Abas) Horizontal no Tablet */
   .locais-list{
     order:3;
     flex-direction:row;
     overflow-x:auto;
     padding-bottom:10px;
     -webkit-overflow-scrolling:touch;
-    gap: 8px; /* Aumenta o espaçamento entre os botões */
-    padding-right: 18px; /* Adiciona padding à direita para o último item não encostar na borda */
-    padding-left: 0; /* Remove o padding da esquerda, pois o menu-lateral já tem */
+    gap: 8px; 
+    padding-right: 18px; 
   }
   .locais-list::-webkit-scrollbar{display:none}
 
   .local-btn{
-    flex: 0 0 auto; /* grow:0, shrink:0, basis:auto - Garante que o botão só ocupe o espaço necessário e habilite o scroll */
-    /* Sobrescreve as regras de desktop que truncavam o texto, permitindo o scroll */
-    overflow: visible;
+    /* CORREÇÃO APLICADA AQUI */
+    flex-shrink: 0; /* Garante que o botão nunca encolha */
+    min-width: 100px; /* Garante que o botão tenha um tamanho mínimo */
+    
+    white-space: nowrap; 
+    overflow: visible; 
     text-overflow: clip; 
   }
 
