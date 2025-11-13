@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Inventário - Ferramental de Usinagem</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- SheetJS (XLSX) para leitura de .xlsx/.csv -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -21,8 +20,7 @@
     </div>
 
     <nav id="locaisList" class="locais-list">
-      <!-- Locais (abas) serão injetados aqui -->
-    </nav>
+      </nav>
 
     <div class="versao">© 2025</div>
   </aside>
@@ -33,24 +31,27 @@
       <div class="controles">
         <input id="searchInput" placeholder="🔍 Buscar item ou descrição..." />
         <button id="btnShowAll">📚 Mostrar Todos</button>
+        <button id="btnToggleTheme" class="theme-toggle-btn">☀️ Modo Claro</button> 
       </div>
     </header>
 
     <main id="mainList" class="main-list">
-      <!-- Cards/listas de itens serão renderizados aqui -->
-    </main>
+      </main>
 
     <footer>
-      <p>Inventário de Usinagem — Dados carregados do arquivo (.xlsx) e salvos localmente</p>
+      <p id="footerText">Inventário de Usinagem — Dados carregados do arquivo (.xlsx) e salvos localmente</p>
     </footer>
   </div>
 
-  <!-- Modal/Drawer de detalhes do item -->
   <div id="modalDetalhes" class="modal" aria-hidden="true">
     <div class="modal-conteudo">
       <button class="close-modal" id="closeModal" aria-label="Fechar">✖</button>
       <h2 id="modalTitulo">Detalhes do Item</h2>
       <div id="modalBody" class="modal-body"></div>
+      
+      <div class="modal-footer">
+          <button id="btnSalvarModal" class="btn-salvar-modal">💾 Salvar Alterações</button>
+      </div>
     </div>
   </div>
 
