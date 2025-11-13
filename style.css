@@ -336,7 +336,7 @@ footer{padding:12px 20px;color:var(--muted); margin-top:auto; background:var(--p
     overflow-x:auto;
     padding-bottom:10px;
     -webkit-overflow-scrolling:touch;
-    gap: 8px; 
+    gap: 12px; /* AUMENTADO: Mais espaçamento entre os botões */
     padding-right: 18px; 
   }
   .locais-list::-webkit-scrollbar{display:none}
@@ -344,7 +344,7 @@ footer{padding:12px 20px;color:var(--muted); margin-top:auto; background:var(--p
   .local-btn{
     /* CORREÇÃO APLICADA AQUI */
     flex-shrink: 0; /* Garante que o botão nunca encolha */
-    min-width: 100px; /* Garante que o botão tenha um tamanho mínimo */
+    min-width: 120px; /* AUMENTADO: Garante um tamanho mínimo para evitar colisão */
     
     white-space: nowrap; 
     overflow: visible; 
