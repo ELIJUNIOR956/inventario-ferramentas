@@ -320,7 +320,6 @@ footer{padding:12px 20px;color:var(--muted); margin-top:auto; background:var(--p
 
 /* Responsividade para Tablets e Celulares (largura máxima de 900px) */
 @media (max-width:900px){
-  /* A barra lateral fixa se torna um cabeçalho de largura total */
   .menu-lateral{
     position:relative;
     width:100%;
@@ -329,39 +328,39 @@ footer{padding:12px 20px;color:var(--muted); margin-top:auto; background:var(--p
     box-shadow:none;
   }
   .menu-lateral .logo{display:none}
-
-  /* O menu de locais (abas) fica horizontalmente scrollável */
+  
+  /* FIX: Menu de Locais (Abas) Horizontal no Tablet */
   .locais-list{
-    order:3; /* move para baixo */
+    order:3;
     flex-direction:row;
     overflow-x:auto;
     padding-bottom:10px;
-    -webkit-overflow-scrolling:touch; /* Scroll suave no iOS */
+    -webkit-overflow-scrolling:touch;
+    gap: 8px; /* Aumenta o espaçamento entre os botões */
+    padding-right: 18px; /* Adiciona padding à direita para o último item não encostar na borda */
+    padding-left: 0; /* Remove o padding da esquerda, pois o menu-lateral já tem */
   }
   .locais-list::-webkit-scrollbar{display:none}
-  .local-btn{white-space:nowrap; flex-shrink:0;}
+
+  .local-btn{
+    flex: 0 0 auto; /* grow:0, shrink:0, basis:auto - Garante que o botão só ocupe o espaço necessário e habilite o scroll */
+    /* Sobrescreve as regras de desktop que truncavam o texto, permitindo o scroll */
+    overflow: visible;
+    text-overflow: clip; 
+  }
+
   .menu-actions{flex-direction:row; gap:10px; margin:0; flex-wrap: wrap;}
   .btn-row{flex:1}
-
-  /* Remove a margem lateral do conteúdo principal */
   .conteudo{margin-left:0}
-
-  /* O cabeçalho se torna vertical */
   header{flex-direction:column; align-items:flex-start; gap:10px}
   .controles{width:100%; flex-direction:column; gap:10px}
-
-  /* Controles (busca, botões) ocupam toda a largura */
   #searchInput, #btnShowAll, .theme-toggle-btn { 
     width:100%; 
     margin-left: 0; 
   }
-
-  /* A lista principal de itens se torna uma única coluna */
   .main-list{grid-template-columns:1fr}
   .card{box-shadow:none}
   .versao{display:none}
-  
-  /* O modal de edição se torna de coluna única (nome em cima, input embaixo) */
   .det-row{flex-direction:column; align-items:flex-start; padding:10px 0}
   .det-row .v{text-align:left; margin-top:4px}
 }
