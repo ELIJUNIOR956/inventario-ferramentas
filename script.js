@@ -1,448 +1,359 @@
-/* script.js
- - Importa .xlsx/.csv via SheetJS
- - Constrói menu lateral com abas (locais)
- - Renderiza itens por local
- - Exibe todos os campos do item em um modal editável
- - Persiste import no localStorage (chave: inv_usinagem_xlsx_v1)
- - Implementa busca otimizada (Debounce)
- - Implementa Theme Toggling (Modo Claro/Escuro)
-*/
 
-const LS_KEY = 'inv_usinagem_xlsx_v1';
-const LS_THEME_KEY = 'inv_theme_preference';
-const EXCLUDE_NAMES = ['materiais sap (2)', 'materiais sap-alterado', 'padrao'];
+const LS_KEY = 'inventario_usinagem';
+let dadosPlanilha = {};      // { sheetName: [rowObj,...] }
+let dadosOriginais = {};
+let localAtual = null;
 
-// Referências DOM
-const body = document.body;
-const fileInput = document.getElementById('fileInput');
-const btnImport = document.getElementById('btnImport');
-const btnClear = document.getElementById('btnClear');
+// DOM refs (mantidos os mesmos IDs do seu HTML)
 const locaisList = document.getElementById('locaisList');
 const mainList = document.getElementById('mainList');
 const titleHeader = document.getElementById('titleHeader');
 const searchInput = document.getElementById('searchInput');
-const btnShowAll = document.getElementById('btnShowAll');
 const footerText = document.getElementById('footerText');
-const btnToggleTheme = document.getElementById('btnToggleTheme');
 
 const modal = document.getElementById('modalDetalhes');
 const modalTitulo = document.getElementById('modalTitulo');
 const modalBody = document.getElementById('modalBody');
-const closeModal = document.getElementById('closeModal');
 const btnSalvarModal = document.getElementById('btnSalvarModal');
+const closeModal = document.getElementById('closeModal');
 
-// Estado Global
-let inventory = {};
-let activeSheet = null;
+/* ================ UTILITIES ================ */
+function safeString(v){ return (v === null || v === undefined) ? '' : String(v); }
+function escapeHtml(s){ return safeString(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-let activeRowIndex = -1;
-let activeSheetName = '';
-
-// -----------------------------------------------------------------------
-// LÓGICA DE TEMA (MODO CLARO/ESCURO)
-// -----------------------------------------------------------------------
-
-function toggleTheme() {
-  const isLight = body.classList.toggle('light-theme');
-  
-  if (isLight) {
-    localStorage.setItem(LS_THEME_KEY, 'light');
-    btnToggleTheme.textContent = '🌙 Modo Escuro';
-  } else {
-    localStorage.setItem(LS_THEME_KEY, 'dark');
-    btnToggleTheme.textContent = '☀️ Modo Claro';
+// Busca valor por várias chaves potenciais (case-insensitive, inclui heurística)
+function findValueByKey(obj, keys){
+  if(!obj || typeof obj !== 'object') return '';
+  // Create map lowercase->realKey
+  const map = {};
+  Object.keys(obj).forEach(k => { map[k.trim().toLowerCase()] = k; });
+  // direct matches
+  for(const kk of keys){
+    const lk = kk.trim().toLowerCase();
+    if(map[lk]) return obj[map[lk]];
   }
-}
-
-// Evento do botão de tema
-btnToggleTheme.addEventListener('click', toggleTheme);
-
-// -----------------------------------------------------------------------
-// Inicialização
-// -----------------------------------------------------------------------
-
-document.addEventListener('DOMContentLoaded', () => {
-  // 1. Aplicar tema salvo
-  const savedTheme = localStorage.getItem(LS_THEME_KEY);
-  const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
-
-  // Se o tema estiver salvo como "light" OU se não houver tema salvo e o sistema preferir light, aplica.
-  if (savedTheme === 'light' || (!savedTheme && prefersLight)) {
-    body.classList.add('light-theme');
-    btnToggleTheme.textContent = '🌙 Modo Escuro';
-  } else {
-    body.classList.remove('light-theme');
-    btnToggleTheme.textContent = '☀️ Modo Claro';
-  }
-
-
-  // 2. Carregar dados do inventário
-  const raw = localStorage.getItem(LS_KEY);
-  if (raw) {
-    try {
-      const savedData = JSON.parse(raw);
-      inventory = savedData.data || {};
-
-      if (savedData.sourceFile) {
-        footerText.textContent = `Dados de: ${savedData.sourceFile} (salvos localmente)`;
-      }
-
-      renderMenu();
-      renderAllCards();
-      const first = Object.keys(inventory)[0];
-      if (first) setActiveLocal(first);
-    } catch (e) {
-      console.warn('Erro ao carregar dados salvos:', e);
+  // inclusion heuristic
+  for(const realKey of Object.keys(obj)){
+    const rk = realKey.trim().toLowerCase();
+    for(const kk of keys){
+      if(rk.includes(kk.trim().toLowerCase())) return obj[realKey];
     }
   }
-});
-
-// -----------------------------------------------------------------------
-// Eventos e Funções Principais
-// -----------------------------------------------------------------------
-
-// Eventos de I/O
-btnImport.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', handleFile, false);
-
-btnClear.addEventListener('click', () => {
-  if (!confirm('Limpar dados salvos no navegador?')) return;
-  localStorage.removeItem(LS_KEY);
-  inventory = {};
-  locaisList.innerHTML = '';
-  mainList.innerHTML = '';
-  titleHeader.textContent = 'Inventário — Selecione um local';
-  footerText.textContent = 'Inventário de Usinagem — Dados carregados do arquivo (.xlsx) e salvos localmente';
-  alert('Dados removidos do LocalStorage.');
-});
-
-btnShowAll.addEventListener('click', () => {
-  renderAllCards();
-  titleHeader.textContent = 'Inventário — Todos os locais';
-});
-
-// Busca com Debounce
-function performSearch() {
-  const q = searchInput.value.trim().toLowerCase();
-  if (!q) {
-    renderAllCards();
-    return;
-  }
-  renderAllCards(q);
+  return '';
 }
-const debouncedSearchHandler = debounce(performSearch, 300);
-searchInput.addEventListener('input', debouncedSearchHandler);
 
-// Modal
-closeModal.addEventListener('click', () => { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); });
-modal.addEventListener('click', (e) => { if (e.target === modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); } });
-btnSalvarModal.addEventListener('click', saveItemDetails); 
+// Tenta obter um nome amigável para exibição
+function guessDisplayName(row){
+  const prefer = ['descrição','descricao','nome','item','material','produto','description','descr'];
+  for(const p of prefer){
+    const v = findValueByKey(row, [p]);
+    if(v !== '' && v !== null && v !== undefined) return v;
+  }
+  // fallback: first non-empty field
+  for(const k of Object.keys(row)){
+    const v = row[k];
+    if(v !== undefined && v !== null && String(v).trim() !== '') return v;
+  }
+  return '(sem descrição)';
+}
 
-// Lógica de Salvamento
-function saveItemDetails() {
-  if (activeRowIndex === -1 || !activeSheetName || !inventory[activeSheetName]) return;
+function debounce(fn, wait){ let t; return function(...a){ clearTimeout(t); t = setTimeout(()=>fn.apply(this,a), wait); }; }
 
-  const currentItem = inventory[activeSheetName][activeRowIndex];
-  const inputElements = modalBody.querySelectorAll('input');
-  
-  // 1. Coleta e aplica os novos valores
-  inputElements.forEach(input => {
-    const key = input.dataset.key;
-    const value = input.value;
-    
-    const numValue = Number(value);
-    if (!isNaN(numValue) && value.trim() !== '') {
-        currentItem[key] = numValue;
-    } else {
-        currentItem[key] = value;
-    }
+/* ================ MODAL ================ */
+function openModalEditar(sheetName, rowObj, rowIndex){
+  modalTitulo.textContent = `${sheetName} — Editar item`;
+  modalBody.innerHTML = '';
+  // Order fields: prefer codigo/nome/quantidade first
+  const keys = Object.keys(rowObj);
+  const pref = ['codigo','cod','sap','nome','descrição','descricao','quantidade','qtd','quant'];
+  keys.sort((a,b)=>{
+    const ai = pref.findIndex(p => a.toLowerCase().includes(p));
+    const bi = pref.findIndex(p => b.toLowerCase().includes(p));
+    if(ai === -1 && bi === -1) return a.localeCompare(b);
+    if(ai === -1) return 1;
+    if(bi === -1) return -1;
+    return ai - bi;
   });
 
-  // 2. Persiste o inventário atualizado no localStorage
-  const currentFilename = footerText.textContent.match(/Dados de: (.*) \(salvos localmente\)/)?.[1] || 'Planilha Editada';
-  const saveData = {
-    data: inventory,
-    sourceFile: currentFilename
-  };
-  localStorage.setItem(LS_KEY, JSON.stringify(saveData));
+  keys.forEach(k=>{
+    const v = rowObj[k];
+    const row = document.createElement('div');
+    row.className = 'det-row';
+    const kEl = document.createElement('div'); kEl.className = 'k'; kEl.textContent = k;
+    const vEl = document.createElement('div'); vEl.className = 'v';
+    const input = document.createElement('input'); input.type = 'text'; input.value = (v === undefined || v === null) ? '' : String(v);
+    input.dataset.field = k;
+    vEl.appendChild(input);
+    row.appendChild(kEl); row.appendChild(vEl);
+    modalBody.appendChild(row);
+  });
 
-  // 3. Atualiza a interface
-  renderAllCards(); 
-  
-  // 4. Fecha o modal
-  modal.style.display = 'none';
-  modal.setAttribute('aria-hidden', 'true');
-  
-  activeRowIndex = -1;
-  activeSheetName = '';
-  
-  alert('Item salvo com sucesso!');
-}
+  modal.style.display = 'flex'; modal.setAttribute('aria-hidden','false');
 
-// Lógica de Importação
-function handleFile(ev) {
-  const f = ev.target.files[0];
-  if (!f) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
+  btnSalvarModal.onclick = () => {
+    // aplicar valores no objeto
+    modalBody.querySelectorAll('input').forEach(input=>{
+      const field = input.dataset.field;
+      dadosPlanilha[sheetName][rowIndex][field] = input.value;
+    });
     try {
-      const data = new Uint8Array(e.target.result);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheets = workbook.SheetNames.filter(n => !EXCLUDE_NAMES.includes(n.toLowerCase()));
-
-      inventory = {};
-      sheets.forEach(name => {
-        const ws = workbook.Sheets[name];
-        let json = XLSX.utils.sheet_to_json(ws, { defval: '' });
-
-        if (!json || json.length === 0 || hasUnnamedHeaders(json)) {
-          const asArray = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-          if (asArray.length > 0) {
-            const firstRow = asArray[0].map(c => String(c).trim());
-            const isHeader = firstRow.some(cell => /nome|descri|descricao|desc|codigo|cod|sap|material|qtd/i.test(cell));
-            if (isHeader) {
-              const headers = asArray.shift().map(h => (h || '').toString());
-              json = asArray.map(row => {
-                const obj = {};
-                for (let i = 0; i < headers.length; i++) {
-                  obj[headers[i] || `col_${i}`] = row[i];
-                }
-                return obj;
-              });
-            } else {
-              const cols = asArray[0].length;
-              if (cols === 3) {
-                json = asArray.map(row => ({
-                  codigo: row[0],
-                  nome: row[1],
-                  quantidade: row[2]
-                }));
-              } else {
-                json = asArray.map(row => {
-                  const obj = {};
-                  row.forEach((v, i) => obj[`col_${i}`] = v);
-                  return obj;
-                });
-              }
-            }
-          } else {
-            json = [];
-          }
-        }
-        inventory[name] = json;
-      });
-
-      const saveData = {
-        data: inventory,
-        sourceFile: f.name
-      };
-      localStorage.setItem(LS_KEY, JSON.stringify(saveData));
-
-      footerText.textContent = `Dados de: ${f.name} (salvos localmente)`;
-
-      renderMenu();
-      renderAllCards();
-      const first = Object.keys(inventory)[0];
-      if (first) setActiveLocal(first);
-      alert('Planilha importada com sucesso. ' + Object.keys(inventory).length + ' locais carregados.');
-    } catch (err) {
-      console.error('Erro ao processar planilha:', err);
-      alert('Erro ao processar a planilha. Veja console para detalhes.');
+      salvarLocalStorage();
+    } catch(e){
+      console.warn('Erro salvando após edição:', e);
     }
+    renderLocal(sheetName);
+    modal.style.display = 'none'; modal.setAttribute('aria-hidden','true');
   };
-  reader.onerror = (err) => {
-    console.error('Erro ao ler arquivo', err);
-    alert('Erro ao ler o arquivo. Veja console para detalhes.');
-  };
-  reader.readAsArrayBuffer(f);
+
+  closeModal.onclick = () => { modal.style.display = 'none'; modal.setAttribute('aria-hidden','true'); };
+  // click fora fecha
+  window.addEventListener('click', function onWinClick(ev){
+    if(ev.target === modal){ modal.style.display = 'none'; modal.setAttribute('aria-hidden','true'); window.removeEventListener('click', onWinClick); }
+  });
 }
 
-// Lógica de Renderização
-function hasUnnamedHeaders(jsonArr) {
-  if (!Array.isArray(jsonArr) || jsonArr.length === 0) return false;
-  const sample = jsonArr[0];
-  return Object.keys(sample).some(k => /unnamed|^col_|^f\d+$/i.test(k));
-}
-
-function renderMenu() {
+/* ================ MENU DE LOCAIS ================ */
+function criarMenuLocais(){
   locaisList.innerHTML = '';
-  const keys = Object.keys(inventory);
-  if (keys.length === 0) {
-    locaisList.innerHTML = '<div style="color:var(--muted);font-size:0.95rem">Nenhum local carregado. Importe uma planilha (.xlsx)</div>';
+  const names = Object.keys(dadosPlanilha);
+  if(names.length === 0){
+    locaisList.innerHTML = `<div style="color:var(--muted);font-size:0.95rem">Nenhum local carregado. Importe uma planilha (.xlsx)</div>`;
     return;
   }
-  keys.forEach((nome) => {
+  names.forEach(name=>{
     const btn = document.createElement('button');
     btn.className = 'local-btn';
-    btn.textContent = nome;
+    btn.textContent = `${name} (${(dadosPlanilha[name]||[]).length})`;
     btn.onclick = () => {
-      setActiveLocal(nome);
+      document.querySelectorAll('.local-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      localAtual = name;
+      renderLocal(name);
     };
     locaisList.appendChild(btn);
   });
 }
 
-function setActiveLocal(nome) {
-  activeSheet = nome;
-  document.querySelectorAll('.local-btn').forEach(b => b.classList.remove('active'));
-  const btn = Array.from(document.querySelectorAll('.local-btn')).find(b => b.textContent === nome);
-  if (btn) btn.classList.add('active');
-
-  titleHeader.textContent = `Inventário — ${nome}`;
-  renderSheet(nome);
-}
-
-function renderAllCards(filter = '') {
+/* ================ RENDER LOCAL (CARRINHOS ESPECIAIS) ================ */
+function renderLocal(local){
+  titleHeader.textContent = `Inventário — ${local}`;
   mainList.innerHTML = '';
-  const keys = Object.keys(inventory);
-  if (keys.length === 0) {
-    mainList.innerHTML = '<div style="color:var(--muted)">Nenhum dado carregado.</div>';
+
+  const rows = dadosPlanilha[local] || [];
+  if(rows.length === 0){
+    mainList.innerHTML = '<div style="color:var(--muted)">Nenhum item neste local.</div>';
     return;
   }
-  keys.forEach(k => {
-    const arr = inventory[k] || [];
-    const filtered = filter ? arr.filter(row => rowMatchesFilter(row, filter)) : arr;
-    if (filtered.length === 0) return;
-    const card = createCard(k, filtered, arr); 
+
+  // Detecta se a aba é "CARRINHO 1", "CARRINHO 2" ou "CARRINHO 3" (case-insensitive)
+  const sheetNameNormalized = String(local).trim().toUpperCase();
+  const isCarr1or2 = /^CARRINHO\s*1$/i.test(sheetNameNormalized) || /^CARRINHO\s*2$/i.test(sheetNameNormalized);
+  const isCarr3 = /^CARRINHO\s*3$/i.test(sheetNameNormalized);
+
+  const card = document.createElement('div'); card.className = 'card';
+  card.innerHTML = `<h3>${escapeHtml(local)} <small style="color:var(--muted);font-size:0.85rem">(${rows.length})</small></h3>`;
+  const ul = document.createElement('ul'); ul.className = 'lista';
+
+  rows.forEach((r, idx)=>{
+    const li = document.createElement('li'); li.className = 'item';
+
+    const display = escapeHtml(safeString(guessDisplayName(r)));
+    const qtd = escapeHtml(safeString(findValueByKey(r, ['quantidade','qtd','quant','qty','contagem'])));
+
+    // Extração robusta das colunas CARRINHO/GAVETA/FILEIRA/Nº DA FILEIRA
+    const carrVal = findValueByKey(r, ['CARRINHO','carrinho']) || '';
+    const gavVal = findValueByKey(r, ['GAVETA','gaveta']) || '';
+    const fileVal = findValueByKey(r, ['FILEIRA','fileira']) || '';
+    const nFileVal = findValueByKey(r, ['Nº DA FILEIRA','N DA FILEIRA','N DA FILEIRA','nº da fileira','n da fileira','num da fileira']) || '';
+
+    // normalize carrinho number for logic (se possível)
+    const carrinhoNum = (() => {
+      const s = safeString(carrVal).replace(/\s/g,'');
+      const num = Number(String(s).replace(/\D/g,'')); // keep digits
+      return isNaN(num) ? null : num;
+    })();
+
+    let localFormatted = '';
+
+    if(isCarr1or2 || carrinhoNum === 1 || carrinhoNum === 2){
+      // Carrinho 1 e 2: têm FILEIRA (letra) e N° DA FILEIRA
+      localFormatted = `Carrinho ${carrinhoNum || safeString(carrVal)} • Gaveta ${safeString(gavVal)} • Fileira ${safeString(fileVal)} • Nº ${safeString(nFileVal)}`;
+    } else if (isCarr3 || carrinhoNum === 3){
+      // Carrinho 3: não tem fileira textual
+      localFormatted = `Carrinho 3 • Gaveta ${safeString(gavVal)} • Nº ${safeString(nFileVal)}`;
+    } else {
+      // Outros locais: tenta localizar campo 'local' etc.
+      const fallback = findValueByKey(r, ['local','loc','armazen','armazenamento','local de armazenamento','location']);
+      localFormatted = fallback ? safeString(fallback) : `Linha ${idx+1}`;
+    }
+
+    li.innerHTML = `
+      <div>
+        <div class="nome">${display}</div>
+        <div class="meta">${escapeHtml(localFormatted)} • Qtd: ${qtd}</div>
+      </div>
+    `;
+    li.onclick = () => openModalEditar(local, r, idx);
+    ul.appendChild(li);
+  });
+
+  card.appendChild(ul);
+  mainList.appendChild(card);
+}
+
+/* ================ RENDER ALL (botão Mostrar Todos) ================ */
+function renderAll(filter=''){
+  mainList.innerHTML = '';
+  const q = safeString(filter).toLowerCase();
+  const sheetNames = Object.keys(dadosPlanilha);
+  if(sheetNames.length === 0){ mainList.innerHTML = '<div style="color:var(--muted)">Nenhum dado carregado.</div>'; return; }
+
+  sheetNames.forEach(sn=>{
+    const rows = dadosPlanilha[sn] || [];
+    const filtered = q ? rows.filter(r => JSON.stringify(r).toLowerCase().includes(q)) : rows;
+    if(filtered.length === 0) return;
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<h3>${escapeHtml(sn)} <small style="color:var(--muted);font-size:0.85rem">(${filtered.length})</small></h3>`;
+    const ul = document.createElement('ul'); ul.className = 'lista';
+    filtered.forEach((r, idx)=>{
+      const li = document.createElement('li'); li.className = 'item';
+      li.innerHTML = `<div><div class="nome">${escapeHtml(safeString(guessDisplayName(r)))}</div></div>`;
+      li.onclick = () => openModalEditar(sn, r, idx);
+      ul.appendChild(li);
+    });
+    card.appendChild(ul);
     mainList.appendChild(card);
   });
 }
 
-function renderSheet(nome) {
+/* ================ BUSCA ================ */
+searchInput.addEventListener('input', debounce(()=>{
+  const q = (searchInput.value || '').trim().toLowerCase();
+  if(!localAtual) { renderAll(q); return; }
+  if(!q){ renderLocal(localAtual); return; }
+  // filtrar só localAtual
+  const rows = dadosPlanilha[localAtual] || [];
+  const filtered = rows.filter(r => JSON.stringify(r).toLowerCase().includes(q));
   mainList.innerHTML = '';
-  const arr = inventory[nome] || [];
-  if (!arr || arr.length === 0) {
-    mainList.innerHTML = '<div style="color:var(--muted)">Nenhum item neste local.</div>';
-    return;
-  }
-  const card = createCard(nome, arr, arr); 
-  mainList.appendChild(card);
-}
-
-function createCard(title, rowsToDisplay, originalRows) {
-  const sec = document.createElement('section');
-  sec.className = 'card';
-  sec.innerHTML = `<h3>${escapeHtml(title)} <small style="color:var(--muted);font-size:0.85rem">(${rowsToDisplay.length})</small></h3>`;
-  const ul = document.createElement('ul');
-  ul.className = 'lista';
-  rowsToDisplay.forEach((r) => {
-    const rowIndex = originalRows.indexOf(r);
-    if(rowIndex === -1) return;
-
-    const li = document.createElement('li');
-    li.className = 'item';
-    const displayName = guessDisplayName(r) || `Item ${rowIndex + 1}`;
-    const qtd = findValueByKey(r, ['quantidade','qtd','quant','qty','amount','quantidade_total','col_2']) || '';
-    const localGuess = findValueByKey(r, ['local','loc','armazen','location','col_3']) || '';
-    li.innerHTML = `
-      <div>
-        <div class="nome">${escapeHtml(String(displayName))}</div>
-        <div class="meta">${escapeHtml(String(localGuess))} • Qtd: ${escapeHtml(String(qtd))}</div>
-      </div>
-    `;
-    li.onclick = () => openDetalhes(title, r, rowIndex); 
+  const card = document.createElement('div'); card.className = 'card';
+  card.innerHTML = `<h3>${escapeHtml(localAtual)} — Resultado da busca (${filtered.length})</h3>`;
+  const ul = document.createElement('ul'); ul.className = 'lista';
+  filtered.forEach((r, idx)=>{
+    const li = document.createElement('li'); li.className = 'item';
+    li.innerHTML = `<div><div class="nome">${escapeHtml(safeString(guessDisplayName(r)))}</div></div>`;
+    li.onclick = () => openModalEditar(localAtual, r, idx);
     ul.appendChild(li);
   });
-  sec.appendChild(ul);
-  return sec;
-}
+  card.appendChild(ul);
+  mainList.appendChild(card);
+}, 250));
 
-function openDetalhes(sheetName, row, rowIndex) { 
-  modal.style.display = 'flex';
-  modal.setAttribute('aria-hidden', 'false');
-  modalTitulo.textContent = `${sheetName} — Editar Item`;
-  modalBody.innerHTML = '';
-  
-  activeRowIndex = rowIndex;     
-  activeSheetName = sheetName;   
+/* ================ IMPORT XLSX ================ */
+document.getElementById('btnImport').addEventListener('click', ()=> document.getElementById('fileInput').click());
 
-  const keys = Object.keys(row);
-  const preferred = ['codigo','cod','sap','nome','description','descricao','desc','quantidade','qtd','quant'];
-  const sortedKeys = keys.slice().sort((a,b) => {
-    const ai = preferred.findIndex(p => a.toLowerCase().includes(p));
-    const bi = preferred.findIndex(p => b.toLowerCase().includes(p));
-    if (ai === -1 && bi === -1) return a.localeCompare(b);
-    if (ai === -1) return 1;
-    if (bi === -1) return -1;
-    return ai - bi;
-  });
+document.getElementById("fileInput").onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-  sortedKeys.forEach(k => {
-    const v = row[k];
-    const rowDiv = document.createElement('div');
-    rowDiv.className = 'det-row';
-    
-    const kEl = document.createElement('div');
-    kEl.className = 'k';
-    kEl.textContent = k;
-    
-    const vEl = document.createElement('div');
-    vEl.className = 'v';
-    
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = (v === undefined || v === null) ? '' : String(v);
-    input.dataset.key = k; 
+  const abasIgnoradas = [
+    "materiais SAP (2)",
+    "materiais SAP-ALTERADO",
+    "PADRAO"
+  ].map(a => a.trim().toUpperCase());
 
-    vEl.appendChild(input);
-    
-    rowDiv.appendChild(kEl);
-    rowDiv.appendChild(vEl);
-    modalBody.appendChild(rowDiv);
-  });
-}
+  const reader = new FileReader();
+  reader.onload = evt => {
+    const wb = XLSX.read(evt.target.result, { type: "binary" });
 
+    dadosPlanilha = {};
 
-// Helpers
-function findValueByKey(obj, keys) {
-  const lowerKeys = Object.keys(obj).reduce((acc, k) => { acc[k.toLowerCase()] = k; return acc; }, {});
-  for (const kk of keys) {
-    const lk = kk.toLowerCase();
-    if (lowerKeys[lk]) return obj[lowerKeys[lk]];
-  }
-  for (const k of Object.keys(obj)) {
-    const kl = k.toLowerCase();
-    for (const kk of keys) {
-      if (kl.includes(kk)) return obj[k];
+    wb.SheetNames.forEach(sheetName => {
+      const nomeAjustado = sheetName.trim().toUpperCase();
+      if (abasIgnoradas.includes(nomeAjustado)) return; // IGNORA A ABA
+
+      const json = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
+      if (json.length > 0) {
+        dadosPlanilha[sheetName] = json;
+      }
+    });
+
+    dadosOriginais = structuredClone(dadosPlanilha);
+    salvarLocalStorage();
+    criarMenuLocais();
+  };
+
+  reader.readAsBinaryString(file);
+};
+
+/* ================ LOCALSTORAGE (compressão LZString) ================ */
+function salvarLocalStorage(){
+  try {
+    const json = JSON.stringify(dadosPlanilha);
+    if(typeof LZString !== 'undefined' && LZString.compress){
+      const comp = LZString.compress(json);
+      localStorage.setItem(LS_KEY, comp);
+    } else {
+      // fallback (pode estourar)
+      localStorage.setItem(LS_KEY, json);
+    }
+  } catch(e){
+    console.error('Erro salvar localStorage:', e);
+    if(e && e.name === 'QuotaExceededError'){
+      // tentativa alternativa: salvar mini-mapa com contagens
+      try {
+        const mini = {};
+        Object.keys(dadosPlanilha).forEach(s => mini[s] = { length: (dadosPlanilha[s]||[]).length });
+        const payload = (typeof LZString !== 'undefined') ? LZString.compress(JSON.stringify(mini)) : JSON.stringify(mini);
+        localStorage.setItem(LS_KEY + '_mini', payload);
+      } catch(_) {}
+      alert('O tamanho dos dados excede o espaço local do navegador. Os dados foram carregados na sessão, mas não puderam ser salvos localmente.');
+    } else {
+      throw e;
     }
   }
-  for (const k of Object.keys(obj)) {
-    const v = obj[k];
-    if ((keys.some(kk => kk.includes('quant')) || keys.includes('col_2')) && typeof v === 'number') return v;
+}
+
+function carregarLocalStorage(){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return;
+    if(typeof LZString !== 'undefined' && LZString.decompress){
+      const dec = LZString.decompress(raw);
+      if(dec){
+        dadosPlanilha = JSON.parse(dec);
+      } else {
+        // fallback: tentar JSON.parse sem descompressão
+        try { dadosPlanilha = JSON.parse(raw); } catch(err){ console.warn('Dados locais não puderam ser descomprimidos.'); }
+      }
+    } else {
+      // fallback
+      try { dadosPlanilha = JSON.parse(raw); } catch(err){ console.warn('Não foi possível parsear dados locais.'); }
+    }
+    criarMenuLocais();
+    // seleciona primeira aba se houver
+    const first = Object.keys(dadosPlanilha)[0];
+    if(first){ localAtual = first; renderLocal(first); }
+  } catch(e){
+    console.error('Erro carregar localStorage:', e);
   }
-  return null;
 }
 
-function guessDisplayName(row) {
-  const prefer = ['nome','description','descricao','desc','material','produto','descricao do material','cod','codigo','sap','descr'];
-  for (const p of prefer) {
-    const v = findValueByKey(row, [p]);
-    if (v !== null && v !== undefined && String(v).trim() !== '') return v;
-  }
-  for (const k of Object.keys(row)) {
-    const v = row[k];
-    if (v !== undefined && v !== null && String(v).trim() !== '') return v;
-  }
-  return null;
-}
+/* ================ BOTÕES & TEMA & CLEAR ================ */
+document.getElementById('btnClear').addEventListener('click', ()=>{
+  if(!confirm('Remover dados salvos localmente e recarregar a página?')) return;
+  try { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY + '_mini'); } catch(_) {}
+  location.reload();
+});
 
-function rowMatchesFilter(row, q) {
-  const texto = Object.values(row).map(v => String(v || '').toLowerCase()).join(' ');
-  return texto.includes(q);
-}
+document.getElementById('btnToggleTheme').addEventListener('click', ()=>{
+  document.body.classList.toggle('light-theme');
+  const b = document.getElementById('btnToggleTheme');
+  b.textContent = document.body.classList.contains('light-theme') ? '🌙 Modo Escuro' : '☀️ Modo Claro';
+});
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, function (m) {
-    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]);
-  });
-}
+document.getElementById('btnShowAll') && document.getElementById('btnShowAll').addEventListener('click', ()=> renderAll());
 
-function debounce(func, delay) {
-  let timer;
-  return function(...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      func.apply(this, args);
-    }, delay);
-  };
-}
+/* ================ INICIALIZAÇÃO ================ */
+carregarLocalStorage();
+
+// fim do script.js
