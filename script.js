@@ -3,7 +3,7 @@
 // ===============================
 
 // Abas a ignorar
-const ABAS_IGNORAR = ["materiais - sap (2)", "materiais sap-alterado", "materiais sap alterado", "padrão", "padrao"];
+const ABAS_IGNORAR = ["materiais SAP (2)", "materiais sap-alterado", "materiais sap alterado", "padrão", "padrao"];
 
 // Dados carregados
 let dadosPlanilha = {};
@@ -360,3 +360,4 @@ document.getElementById("btnToggleTheme").onclick = () => {
 // INICIALIZAÇÃO
 // ===============================
 carregarLocalStorage();
+
